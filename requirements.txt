@@ -1,0 +1,6 @@
+google-api-python-client
+boto3
+apache-airflow-providers-amazon
+minio
+apache-airflow-providers-apache-spark
+oauth2client

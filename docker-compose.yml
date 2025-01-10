@@ -1,0 +1,155 @@
+version: '3.8'
+
+services:
+  # PostgreSQL (for Airflow metadata)
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - airflow_net
+
+  # Spark Master
+  spark-master:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+    volumes:
+      - ./scripts:/opt/airflow/scripts 
+    networks:
+      - airflow_net
+
+  # Spark Worker
+  spark-worker-1:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    ports:
+      - "8081:8081"
+    depends_on:
+      - spark-master
+    volumes:
+      - ./scripts:/opt/airflow/scripts 
+    networks:
+      - airflow_net
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:RELEASE.2023-07-21T21-12-44Z
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+      - MINIO_DOMAIN=storage
+      - MINIO_REGION_NAME=us-east-1
+      - MINIO_REGION=us-east-1
+    ports:
+      - 9001:9001
+      - 9000:9000
+    command: ["server", "/data", "--console-address", ":9001"]
+    networks:
+      - airflow_net
+
+  # Dremio (Querying and analysis)
+  dremio:
+    image: dremio/dremio-oss:latest
+    ports:
+      - "9047:9047"
+    environment:
+      - DREMIO_UID=0
+      - DREMIO_GID=0
+    networks:
+      - airflow_net
+
+  # Metabase (Data visualization)
+  metabase:
+    image: metabase/metabase:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - MB_DB_FILE=/metabase.db
+    volumes:
+      - metabase-data:/metabase.db
+    networks:
+      - airflow_net
+
+  # Airflow (Orchestration)
+  airflow:
+    container_name: airflow
+    image: custom-airflow-spark:latest  
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__CORE__FERNET_KEY=8JwWLUVmTShNKZN4c5mH4I7X4EdDiGjID6P8Hln54r0=
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./scripts:/opt/airflow/scripts
+    ports:
+      - "8090:8080"
+    command: >
+      bash -c "
+      airflow db init && \
+      airflow scheduler & \
+      airflow webserver"
+    depends_on:
+      - postgres
+      - spark-master
+      - spark-worker-1
+    networks:
+      - airflow_net
+
+  # Custom Jupyter Notebook (for interactive development)
+  jupyter-notebook:
+    container_name: jupyter-notebook
+    image: jupyter/pyspark-notebook:latest  # Replace with your custom Spark image
+    #platform: linux/amd64  # Ensure compatibility with your host
+    command: jupyter notebook --ip 0.0.0.0 --port 8888 --no-browser --allow-root --NotebookApp.token=''
+    ports:
+      - '8899:8888'  # Change host port to 8899 to avoid conflict
+    volumes:
+      - ./data:/opt/bitnami/spark/custom_data
+      - ./src:/opt/bitnami/spark/src
+      - ./jars:/opt/bitnami/spark/connectors/jars
+      - spark-logs:/opt/bitnami/spark/spark-events
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
+    networks:
+      - airflow_net
+  
+  nessie:
+    image: projectnessie/nessie:latest
+    container_name: nessie
+    networks:
+      - airflow_net
+    ports:
+      - 19120:19120
+
+volumes:
+  postgres-data:
+  dags:
+  logs:
+  plugins:
+  scripts:
+  metabase-data:
+  spark-logs:
+
+networks:
+  airflow_net:
+    driver: bridge

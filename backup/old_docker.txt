@@ -1,0 +1,84 @@
+# Use the official Apache Airflow image as the base
+FROM apache/airflow:2.6.0
+
+USER root
+
+###############################
+## Begin JAVA installation
+###############################
+# Install OpenJDK-11 for ARM64, wget, and procps
+RUN apt-get update && \
+    apt-get install -y openjdk-11-jdk-headless wget procps && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set JAVA_HOME for ARM64 and update PATH
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-arm64
+ENV PATH=$JAVA_HOME/bin:$PATH
+###############################
+## Finish JAVA installation
+###############################
+
+###############################
+## SPARK files and variables
+###############################
+# Set SPARK_HOME and Install Spark in /opt/spark
+ENV SPARK_HOME=/opt/spark
+
+# Define Spark and Hadoop versions
+ARG SPARK_VERSION=3.5.0
+ARG HADOOP_VERSION=3
+
+# Download and set up Apache Spark
+RUN cd "/tmp" && \
+    wget --no-verbose "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" && \
+    tar -xvzf "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" && \
+    mv "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}" "$SPARK_HOME" && \
+    rm "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz"
+
+# Add Spark to the PATH
+ENV PATH=$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
+###############################
+## Finish SPARK files and variables
+###############################
+
+USER airflow
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+FROM apache/airflow:2.6.0
+
+# Switch to the root user
+USER root
+
+# Install Java 17
+RUN apt-get update && \
+    apt-get install -y openjdk-17-jdk-headless && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set JAVA_HOME for OpenJDK 17
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV PATH=$JAVA_HOME/bin:$PATH
+
+# Download and set up Apache Spark 3.5.2 with Hadoop 3
+ENV SPARK_VERSION=3.5.2
+ENV HADOOP_VERSION=3
+ENV SCALA_VERSION=2.12.18
+ENV SPARK_HOME=/opt/spark
+
+RUN cd /tmp && \
+    wget --no-verbose https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz && \
+    tar -xvzf spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz && \
+    mv spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} $SPARK_HOME && \
+    rm spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz
+
+# Add Spark to the PATH
+ENV PATH=$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH
+
+# Switch back to the airflow user
+USER airflow
+
+# Install any Python dependencies (if needed)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt

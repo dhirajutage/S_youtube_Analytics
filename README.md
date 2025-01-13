@@ -1,5 +1,5 @@
 # Project Setup Instructions
-![Uploading image.png…]()
+ Check The PDF for Project Details
 
 # 1. Clone the Repository
 ```

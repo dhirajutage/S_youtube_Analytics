@@ -1,4 +1,5 @@
 # Project Setup Instructions
+![Uploading image.png…]()
 
 # 1. Clone the Repository
 ```
